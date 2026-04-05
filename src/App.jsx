@@ -1,12 +1,10 @@
 import { useState, useRef } from 'react';
 
-// ═══════════════════════════════════════════
-// 在这里填入你的 key（申请完 Supabase 后填）
-// ═══════════════════════════════════════════
-const SB_URL = 'https://你的PROJECT.supabase.co';
-const SB_ANON = '你的anon_key';
-const CLAUDE_KEY = '你的claude_api_key';
-// ═══════════════════════════════════════════
+// ─── 修正這裡：改回從 .env 讀取 ───
+const SB_URL = import.meta.env.VITE_SB_URL;
+const SB_ANON = import.meta.env.VITE_SB_ANON;
+const CLAUDE_KEY = import.meta.env.VITE_CLAUDE_KEY;
+// ──────────────────────────────────
 
 const sb = {
   async insert(table, data) {
@@ -26,19 +24,6 @@ const sb = {
       return false;
     }
   },
-  async select(table) {
-    try {
-      const r = await fetch(
-        `${SB_URL}/rest/v1/${table}?select=*&order=created_at.desc`,
-        {
-          headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}` },
-        }
-      );
-      return r.ok ? r.json() : [];
-    } catch {
-      return [];
-    }
-  },
 };
 
 const sid = () => {
@@ -47,36 +32,62 @@ const sid = () => {
   return sessionStorage.getItem('eof_sid');
 };
 
+// ─── QUIZ v3 ────────────────────────────────────────────────────────────────
+// Q1: State（決定主推薦方向）
+// Q2: Time（微調茶款 + fallback）
+// Q3: Flavour（確認 SKU）
 const QUIZ = [
   {
-    id: 'intent',
-    question: 'What draws you to tea?',
-    sub: "There's no wrong answer — just your truth.",
+    id: 'state',
+    question: 'Where do you find yourself today?',
+    sub: 'The mountain will meet you there.',
     opts: [
       {
-        v: 'calm',
-        label: 'A moment of calm',
-        icon: '🌿',
-        s: { ritual: 2, wellness: 1 },
-      },
-      {
-        v: 'focus',
-        label: 'Clarity & focus',
-        icon: '🧘',
-        s: { ritual: 1, connoisseur: 1 },
-      },
-      {
-        v: 'health',
-        label: 'Nourishing my body',
-        icon: '✨',
-        s: { wellness: 3 },
-      },
-      { v: 'explore', label: 'Pure curiosity', icon: '🗺️', s: { explorer: 3 } },
-      {
-        v: 'flavor',
-        label: 'The taste itself',
+        v: 'steady',
+        label: 'Steady Focus',
         icon: '⛰️',
-        s: { connoisseur: 3 },
+        s: { steady: 3 },
+        hint: '穩定清醒，思緒不散',
+      },
+      {
+        v: 'calm',
+        label: 'Calm Clarity',
+        icon: '☁️',
+        s: { calm: 3 },
+        hint: '安靜下來，不再緊繃',
+      },
+      {
+        v: 'reset',
+        label: 'Reset',
+        icon: '🌙',
+        s: { reset: 3 },
+        hint: '重新開始，找回節奏',
+      },
+    ],
+  },
+  {
+    id: 'moment',
+    question: 'Your tea moment looks like…',
+    sub: 'When does tea find you?',
+    opts: [
+      { v: 'morning', label: 'Morning ritual', icon: '🌅', s: { steady: 2 } },
+      {
+        v: 'afternoon',
+        label: 'Afternoon escape',
+        icon: '☁️',
+        s: { reset: 1, calm: 1 },
+      },
+      {
+        v: 'evening',
+        label: 'Evening stillness',
+        icon: '🌙',
+        s: { calm: 2, reset: 1 },
+      },
+      {
+        v: 'anytime',
+        label: 'Whenever I need it',
+        icon: '∞',
+        s: { steady: 1, calm: 1 },
       },
     ],
   },
@@ -89,199 +100,164 @@ const QUIZ = [
         v: 'floral',
         label: 'Light & floral',
         icon: '🌸',
-        s: { explorer: 2, wellness: 1 },
+        s: { steady: 2, calm: 1 },
       },
+      {
+        v: 'sweet',
+        label: 'Sweet & honeyed',
+        icon: '🍯',
+        s: { reset: 2, calm: 1 },
+      }, // 取代 Crisp & green
       {
         v: 'earthy',
         label: 'Deep & earthy',
         icon: '🪨',
-        s: { connoisseur: 2, ritual: 1 },
-      },
-      {
-        v: 'fresh',
-        label: 'Crisp & green',
-        icon: '🍃',
-        s: { wellness: 2, explorer: 1 },
+        s: { steady: 1, calm: 1 },
       },
       {
         v: 'roasted',
         label: 'Warm & roasted',
         icon: '🔥',
-        s: { ritual: 2, connoisseur: 1 },
-      },
-    ],
-  },
-  {
-    id: 'moment',
-    question: 'Your tea moment looks like…',
-    sub: 'When does tea find you?',
-    opts: [
-      { v: 'morning', label: 'Morning ritual', icon: '🌅', s: { ritual: 2 } },
-      {
-        v: 'afternoon',
-        label: 'Afternoon escape',
-        icon: '☁️',
-        s: { explorer: 1, wellness: 1 },
-      },
-      {
-        v: 'evening',
-        label: 'Evening stillness',
-        icon: '🌙',
-        s: { wellness: 2, ritual: 1 },
-      },
-      {
-        v: 'anytime',
-        label: 'Whenever I need it',
-        icon: '∞',
-        s: { explorer: 2, connoisseur: 1 },
+        s: { reset: 1, steady: 1 },
       },
     ],
   },
 ];
 
+// ─── PERSONAS v4 ─────────────────────────────────────────────────────────────
 const PERSONAS = {
-  explorer: {
-    key: 'explorer',
-    title: 'The Curious Explorer',
-    tagline: 'Every cup is a new discovery',
-    desc: "You approach tea with the spirit of an adventurer — open, curious, and ready to be surprised. Taiwan's highlands hold stories you haven't heard yet.",
+  steady: {
+    key: 'steady',
+    title: 'STEADY',
+    tagline: 'Focus that lasts — without the drop.',
+    line1: 'Not another push.',
+    line2: 'Something that holds you steady.',
+    desc: "Grown in Taiwan's high mountains, made for this kind of clarity.",
     accent: '#6b8f5e',
     grad: 'linear-gradient(135deg,#1a2e1a,#2d4a2d)',
+    copyAfternoon: 'Stay steady through the afternoon — without another cup.',
     knowledge: [
       {
-        title: 'Why Taiwan Tea?',
-        body: "Nestled in subtropical mountains at 1,000–2,600m, Taiwan's gardens experience dramatic day-night temperature swings that slow leaf growth — concentrating flavor into something remarkable.",
+        title: 'Why High Mountain Oolong?',
+        body: 'At 1,800m, slow-growing leaves develop a natural balance of caffeine and L-theanine — releasing energy gradually, without the sudden drop that follows coffee.',
       },
       {
-        title: 'The Terroir of Alishan',
-        body: "Much like wine's terroir, Alishan's morning mists and mineral-rich soils leave a fingerprint on every leaf. What you taste isn't just a plant — it's a place.",
+        title: 'The Alishan Difference',
+        body: 'Morning cloud cover and dramatic temperature swings between day and night create a leaf with extraordinary complexity. One farmer, one hillside, one harvest.',
       },
     ],
     products: [
       {
-        name: 'Ali Shan High Mountain Oolong',
-        price: '£28',
-        desc: "Your gateway to Taiwan's peaks",
+        name: 'Lishan High Mountain Oolong',
+        price: '£38',
+        desc: 'Steady, cloud-covered mornings in every cup',
+        tag: 'Morning Ritual',
+      },
+      {
+        name: 'Alishan High Mountain Oolong',
+        price: '£32',
+        desc: 'A balanced place to begin — smooth, steady, and easy to return to.',
         tag: 'Best Start',
       },
+    ],
+  },
+  calm: {
+    key: 'calm',
+    title: 'CALM',
+    tagline: 'Clear mind. Quiet body. A different kind of alert.',
+    line1: 'Not more noise.',
+    line2: 'Something that lets things settle.',
+    desc: "Lightly oxidised in Taiwan's mountains, made for quiet clarity.",
+    accent: '#4a7c8a',
+    grad: 'linear-gradient(135deg,#0d1f2a,#1a3040)',
+    copyAfternoon: 'Let the afternoon soften — without pushing it further.',
+    copyEvening: 'Warm, quiet, and low in stimulation.',
+    knowledge: [
       {
-        name: 'Oriental Beauty',
-        price: '£35',
-        desc: 'Tea kissed by leafhoppers — utterly unique',
-        tag: 'Most Unique',
+        title: 'Pouchong: The Quietest Oolong',
+        body: "Wenshan Pouchong is the lightest of Taiwan's oolongs — barely oxidised, delicate as morning air. A cup that asks nothing of you except to be present.",
+      },
+      {
+        title: 'Evening & the Roasted Path',
+        body: 'Deep-roasted oolongs go through a long, slow heat process. The result: a warmer, softer profile — grounding without stimulating.',
+      },
+    ],
+    products: [
+      {
+        name: 'Wenshan Pouchong',
+        price: '£26',
+        desc: 'Light, clear, and gently grounding',
+        tag: 'Morning Calm',
+      },
+      {
+        name: 'Honey Fragrance Black Tea',
+        price: '£30',
+        desc: 'Warm, quiet, and low in stimulation.',
+        tag: 'Evening Stillness',
       },
     ],
   },
-  ritual: {
-    key: 'ritual',
-    title: 'The Ritual Keeper',
-    tagline: 'Tea as ceremony, every day',
-    desc: "You understand that a cup of tea is never just a cup of tea. It's the pause. The breath. The sacred five minutes that belong entirely to you.",
+  reset: {
+    key: 'reset',
+    title: 'RESET',
+    tagline: 'Choose a different rhythm.',
+    line1: 'Not another push through.',
+    line2: 'Something that shifts your pace.',
+    desc: "Naturally shaped by Taiwan's unique terroir, made for a gentler reset.",
     accent: '#b8732a',
     grad: 'linear-gradient(135deg,#1a1208,#2d1e0f)',
+    copyAfternoon: "When coffee stops working, don't push harder.",
+    copyEvening: 'Deep roast. Softer profile. Less stimulation.',
     knowledge: [
       {
-        title: 'Gongfu Cha: Doing Tea Slowly',
-        body: 'Multiple small infusions from the same leaves — a conversation with the leaf. Watch it unfurl and evolve over 6–8 steepings.',
+        title: "Oriental Beauty: Nature's Intervention",
+        body: 'The only tea that requires an insect to complete it. Tiny leafhoppers bite the leaves, triggering a natural oxidation that creates an unrepeatable honey fragrance. Not made — allowed.',
       },
       {
-        title: 'Why Oolong for Ritual?',
-        body: 'Between green and black, oolong rewards patience. Each steep reveals new dimensions — floral, then fruity, then deep and roasted.',
+        title: 'The Evening Choice',
+        body: 'Charcoal-roasted oolongs undergo long, slow heat. The result is a warmer, mellower profile — a quieter signal at the end of the day.',
       },
     ],
     products: [
       {
-        name: 'Dong Ding Oolong',
-        price: '£24',
-        desc: 'Traditional roasted — built for daily ritual',
-        tag: 'Daily Ritual',
+        name: 'Oriental Beauty',
+        price: '£38',
+        desc: "Taiwan's most unique tea — honey, stone fruit, and calm",
+        tag: 'Afternoon Reset',
       },
       {
-        name: 'Li Shan Reserve',
-        price: '£42',
-        desc: 'Reserve grade, for your most sacred mornings',
-        tag: 'Premium',
-      },
-    ],
-  },
-  wellness: {
-    key: 'wellness',
-    title: 'The Wellness Seeker',
-    tagline: 'Tea as medicine, joy as practice',
-    desc: "You see tea as nature's gift — healing, balancing, and nourishing. Taiwan's small farmers cultivate with this exact intention: clean land, clean leaves, clean energy.",
-    accent: '#4a7c4a',
-    grad: 'linear-gradient(135deg,#0d1f0d,#1a3020)',
-    knowledge: [
-      {
-        title: "GABA Tea: Taiwan's Secret",
-        body: 'Developed in Taiwan, GABA oolong is processed in nitrogen-rich environments, boosting gamma-aminobutyric acid — known to promote calm and reduce anxiety.',
-      },
-      {
-        title: 'Clean Farming Matters',
-        body: 'Our partner farms in Nantou County use minimal intervention and natural compost. The result: healthier tea and a cleaner nervous system response.',
-      },
-    ],
-    products: [
-      {
-        name: 'GABA Oolong',
+        name: 'Charcoal Roasted Oolong',
         price: '£30',
-        desc: "Taiwan's natural stress response",
-        tag: 'Wellness Hero',
-      },
-      {
-        name: 'Green Emerald',
-        price: '£22',
-        desc: 'High antioxidant, light and pure',
-        tag: 'Most Clean',
-      },
-    ],
-  },
-  connoisseur: {
-    key: 'connoisseur',
-    title: 'The Highland Connoisseur',
-    tagline: 'Terroir. Craft. The infinite cup.',
-    desc: "Flavor isn't just taste to you — it's information. You read a cup the way others read a room. Taiwan's best teas were grown for people exactly like you.",
-    accent: '#9c6b3c',
-    grad: 'linear-gradient(135deg,#1a1208,#251b10)',
-    knowledge: [
-      {
-        title: 'Elevation & Complexity',
-        body: 'Every 100m gain in altitude adds ~10 days to the growing season. This slow development creates phenolic complexity — the hallmark of high mountain oolongs.',
-      },
-      {
-        title: 'Single-Origin Only',
-        body: 'All Echo of Formosa teas are single-garden, single-season. We reject blending because it erases the story. One farmer, one hillside, one harvest.',
-      },
-    ],
-    products: [
-      {
-        name: 'Da Yu Ling Reserve',
-        price: '£55',
-        desc: "Taiwan's highest elevation — the apex",
-        tag: "Collector's Pick",
-      },
-      {
-        name: 'Honey Oolong Vintage',
-        price: '£45',
-        desc: '2024 award-winning harvest',
-        tag: 'Award Winner',
+        desc: 'Deep roast. Softer profile. Less stimulation.',
+        tag: 'Evening Stillness',
       },
     ],
   },
 };
 
-const C = {
-  forest: '#0a1a0a',
-  deep: '#0d1f0d',
-  cream: '#f7f2e8',
-  warm: '#faf7f1',
-  amber: '#b8732a',
-  amberL: '#d4924a',
-  mist: '#c8d4c0',
-  textD: '#1a1208',
-  textM: '#4a3f2f',
-};
+// ─── COMPUTE PERSONA (Mapping v3 fallback logic) ─────────────────────────────
+// Q1 State 決定主方向
+// Fallback: Steady Focus × Afternoon → 強化 steady（高山烏龍續航）
+//           Reset × Afternoon → 強化 reset（東方美人降速）
+function computePersona(ans) {
+  const sc = { steady: 0, calm: 0, reset: 0 };
+  QUIZ.forEach((q) => {
+    const o = q.opts.find((o) => o.v === ans[q.id]);
+    if (o)
+      Object.entries(o.s).forEach(([k, v]) => {
+        if (sc[k] !== undefined) sc[k] += v;
+      });
+  });
 
+  // Fallback rule from mapping v3
+  if (ans.state === 'steady' && ans.moment === 'afternoon') sc.steady += 2;
+  if (ans.state === 'reset' && ans.moment === 'afternoon') sc.reset += 2;
+  if (ans.moment === 'evening') sc.calm += 1; // evening always leans calm
+
+  return Object.entries(sc).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+// ─── COMPONENTS ──────────────────────────────────────────────────────────────
 function Dot({ d }) {
   return (
     <span
@@ -333,7 +309,7 @@ function ChatPanel({ persona, onClose }) {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 800,
-          system: `You are a warm and knowledgeable tea guide for Echo of Formosa, a premium Taiwan artisan tea brand. User persona: ${persona.title} — ${persona.desc} Reply in 2-3 sentences with sensory language. Mention specific teas: Alishan, Da Yu Ling, Li Shan, Dong Ding, GABA oolong, Oriental Beauty.`,
+          system: `You are a warm and knowledgeable tea guide for Echo of Formosa, a premium Taiwan artisan tea brand. User persona: ${persona.title} — ${persona.desc} Reply in 2-3 sentences with sensory language. Mention specific teas: Lishan, Alishan, Dong Ding, Charcoal Roasted Oolong, Oriental Beauty, Wenshan Pouchong, Honey Black Tea. Never make medical or health claims. Use experience and sensory language only.`,
           messages: [...history, { role: 'user', content: txt }],
         }),
       });
@@ -380,7 +356,7 @@ function ChatPanel({ persona, onClose }) {
           width: '100%',
           maxWidth: 420,
           height: '70vh',
-          background: C.warm,
+          background: '#faf7f1',
           borderRadius: 20,
           display: 'flex',
           flexDirection: 'column',
@@ -390,7 +366,7 @@ function ChatPanel({ persona, onClose }) {
       >
         <div
           style={{
-            background: C.forest,
+            background: '#0a1a0a',
             padding: '16px 22px',
             display: 'flex',
             justifyContent: 'space-between',
@@ -402,7 +378,7 @@ function ChatPanel({ persona, onClose }) {
               style={{
                 fontFamily: 'Georgia,serif',
                 fontSize: 17,
-                color: C.cream,
+                color: '#f7f2e8',
               }}
             >
               Tea Guide
@@ -410,7 +386,7 @@ function ChatPanel({ persona, onClose }) {
             <div
               style={{
                 fontSize: 10,
-                color: C.mist,
+                color: '#c8d4c0',
                 letterSpacing: '.1em',
                 textTransform: 'uppercase',
                 opacity: 0.55,
@@ -424,7 +400,7 @@ function ChatPanel({ persona, onClose }) {
             style={{
               background: 'none',
               border: 'none',
-              color: C.mist,
+              color: '#c8d4c0',
               fontSize: 22,
               cursor: 'pointer',
               opacity: 0.65,
@@ -459,8 +435,8 @@ function ChatPanel({ persona, onClose }) {
                     m.role === 'user'
                       ? '16px 16px 4px 16px'
                       : '16px 16px 16px 4px',
-                  background: m.role === 'user' ? C.forest : '#f0ece4',
-                  color: m.role === 'user' ? C.cream : C.textD,
+                  background: m.role === 'user' ? '#0a1a0a' : '#f0ece4',
+                  color: m.role === 'user' ? '#f7f2e8' : '#1a1208',
                   fontSize: 14,
                   lineHeight: 1.65,
                 }}
@@ -508,7 +484,7 @@ function ChatPanel({ persona, onClose }) {
               fontSize: 14,
               outline: 'none',
               background: '#faf8f4',
-              color: C.textD,
+              color: '#1a1208',
             }}
           />
           <button
@@ -518,11 +494,11 @@ function ChatPanel({ persona, onClose }) {
               width: 42,
               height: 42,
               borderRadius: '50%',
-              background: C.forest,
+              background: '#0a1a0a',
               border: 'none',
               cursor: 'pointer',
               fontSize: 18,
-              color: C.cream,
+              color: '#f7f2e8',
               opacity: loading ? 0.5 : 1,
             }}
           >
@@ -534,6 +510,7 @@ function ChatPanel({ persona, onClose }) {
   );
 }
 
+// ─── MAIN APP ────────────────────────────────────────────────────────────────
 export default function App() {
   const [stage, setStage] = useState('hero');
   const [step, setStep] = useState(0);
@@ -545,15 +522,6 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [joined, setJoined] = useState(false);
   const saved = useRef(false);
-
-  const computePersona = (ans) => {
-    const sc = { explorer: 0, ritual: 0, wellness: 0, connoisseur: 0 };
-    QUIZ.forEach((q) => {
-      const o = q.opts.find((o) => o.v === ans[q.id]);
-      if (o) Object.entries(o.s).forEach(([k, v]) => (sc[k] += v));
-    });
-    return Object.entries(sc).sort((a, b) => b[1] - a[1])[0][0];
-  };
 
   const choose = (qId, v) => {
     setPicked(v);
@@ -725,13 +693,26 @@ export default function App() {
                   lineHeight: 1.85,
                   fontWeight: 300,
                   maxWidth: 380,
-                  margin: '0 auto 48px',
+                  margin: '0 auto 12px',
                   opacity: 0.8,
                 }}
               >
-                Taiwan's highland teas carry stories of mist, stone, and craft.
-                <br />
-                In three questions, we find yours.
+                A different way to stay clear.
+              </p>
+              <p
+                className="fu"
+                style={{
+                  animationDelay: '.3s',
+                  fontSize: 14,
+                  color: '#c8d4c0',
+                  lineHeight: 1.85,
+                  fontWeight: 300,
+                  maxWidth: 380,
+                  margin: '0 auto 48px',
+                  opacity: 0.5,
+                }}
+              >
+                Not more energy. Just a better kind of clarity.
               </p>
               <div className="fu" style={{ animationDelay: '.36s' }}>
                 <button
@@ -757,7 +738,7 @@ export default function App() {
                     e.currentTarget.style.color = '#b8732a';
                   }}
                 >
-                  Begin the Journey
+                  Start your ritual
                 </button>
               </div>
               <p
@@ -872,7 +853,18 @@ export default function App() {
                     <span style={{ fontSize: 20, flexShrink: 0 }}>
                       {opt.icon}
                     </span>
-                    <span>{opt.label}</span>
+                    <span style={{ flex: 1 }}>{opt.label}</span>
+                    {opt.hint && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: 'rgba(200,212,192,.4)',
+                          fontWeight: 300,
+                        }}
+                      >
+                        {opt.hint}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -883,7 +875,6 @@ export default function App() {
         {/* ── RESULT ── */}
         {stage === 'result' && p && (
           <div className="fi">
-            {/* Persona banner */}
             <div
               style={{
                 background: p.grad,
@@ -915,42 +906,102 @@ export default function App() {
                     letterSpacing: '.28em',
                     textTransform: 'uppercase',
                     color: 'rgba(200,212,192,.5)',
-                    marginBottom: 16,
+                    marginBottom: 20,
                   }}
                 >
-                  Your Tea Identity
+                  Today, you need
                 </div>
                 <h2
                   style={{
                     fontFamily: "'Cormorant Garamond',serif",
-                    fontSize: 'clamp(38px,7vw,64px)',
+                    fontSize: 'clamp(48px,8vw,72px)',
                     fontWeight: 300,
-                    lineHeight: 1.08,
-                    marginBottom: 10,
+                    lineHeight: 1.05,
+                    marginBottom: 20,
+                    letterSpacing: '.04em',
                   }}
                 >
                   {p.title}
                 </h2>
+                <p
+                  style={{
+                    fontSize: 20,
+                    color: '#c8d4c0',
+                    fontWeight: 300,
+                    lineHeight: 1.6,
+                    maxWidth: 420,
+                    margin: '0 auto 6px',
+                    opacity: 0.9,
+                  }}
+                >
+                  {p.line1}
+                </p>
+                <p
+                  style={{
+                    fontSize: 20,
+                    color: '#c8d4c0',
+                    fontWeight: 300,
+                    lineHeight: 1.6,
+                    maxWidth: 420,
+                    margin: '0 auto 24px',
+                    opacity: 0.9,
+                  }}
+                >
+                  {p.line2}
+                </p>
                 <div
                   style={{
-                    fontSize: 14,
+                    width: 40,
+                    height: 1,
+                    background: p.accent,
+                    margin: '0 auto 24px',
+                    opacity: 0.6,
+                  }}
+                />
+                <p
+                  style={{
+                    fontSize: 15,
                     color: p.accent,
-                    fontWeight: 500,
-                    marginBottom: 24,
-                    letterSpacing: '.06em',
+                    fontWeight: 400,
+                    marginBottom: 8,
+                    letterSpacing: '.04em',
                   }}
                 >
                   {p.tagline}
-                </div>
+                </p>
+                {answers.moment === 'afternoon' && p.copyAfternoon && (
+                  <p
+                    style={{
+                      fontSize: 14,
+                      color: 'rgba(200,212,192,.6)',
+                      fontWeight: 300,
+                      fontStyle: 'italic',
+                      marginTop: 6,
+                    }}
+                  >
+                    {p.copyAfternoon}
+                  </p>
+                )}
+                {answers.moment === 'evening' && p.copyEvening && (
+                  <p
+                    style={{
+                      fontSize: 14,
+                      color: 'rgba(200,212,192,.6)',
+                      fontWeight: 300,
+                      fontStyle: 'italic',
+                      marginTop: 6,
+                    }}
+                  >
+                    {p.copyEvening}
+                  </p>
+                )}
                 <p
                   style={{
-                    fontSize: 16,
-                    color: '#c8d4c0',
+                    fontSize: 13,
+                    color: 'rgba(200,212,192,.45)',
                     fontWeight: 300,
-                    lineHeight: 1.85,
-                    maxWidth: 460,
-                    margin: '0 auto',
-                    opacity: 0.85,
+                    marginTop: 20,
+                    lineHeight: 1.7,
                   }}
                 >
                   {p.desc}
@@ -958,83 +1009,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Knowledge */}
-            <div
-              style={{
-                background: '#faf7f1',
-                padding: 'clamp(48px,8vw,80px) 24px',
-              }}
-            >
-              <div style={{ maxWidth: 760, margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: 40 }}>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      letterSpacing: '.28em',
-                      textTransform: 'uppercase',
-                      color: '#b8732a',
-                      marginBottom: 10,
-                    }}
-                  >
-                    Curated for You
-                  </div>
-                  <h3
-                    style={{
-                      fontFamily: "'Cormorant Garamond',serif",
-                      fontSize: 'clamp(28px,4vw,42px)',
-                      fontWeight: 400,
-                      color: '#1a1208',
-                    }}
-                  >
-                    Your Tea Knowledge
-                  </h3>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))',
-                    gap: 24,
-                  }}
-                >
-                  {p.knowledge.map((k, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        padding: '28px 26px',
-                        background: '#faf7f0',
-                        borderRadius: 14,
-                        borderLeft: `3px solid ${p.accent}`,
-                      }}
-                    >
-                      <h4
-                        style={{
-                          fontFamily: "'Cormorant Garamond',serif",
-                          fontSize: 22,
-                          fontWeight: 500,
-                          color: '#1a1208',
-                          marginBottom: 12,
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        {k.title}
-                      </h4>
-                      <p
-                        style={{
-                          color: '#4a3f2f',
-                          fontSize: 14,
-                          lineHeight: 1.8,
-                          fontWeight: 300,
-                        }}
-                      >
-                        {k.body}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Products */}
+            {/* PRODUCTS — 先成交 */}
             <div
               style={{
                 background: '#0d1f0d',
@@ -1064,13 +1039,23 @@ export default function App() {
                   >
                     Your Teas
                   </h3>
+                  <p
+                    style={{
+                      color: 'rgba(200,212,192,.5)',
+                      fontSize: 14,
+                      marginTop: 10,
+                      fontWeight: 300,
+                    }}
+                  >
+                    Start with one. See how it feels.
+                  </p>
                 </div>
                 <div
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))',
                     gap: 20,
-                    marginBottom: 40,
+                    marginBottom: 0,
                   }}
                 >
                   {p.products.map((pr, i) => (
@@ -1162,13 +1147,126 @@ export default function App() {
                           e.currentTarget.style.color = p.accent;
                         }}
                       >
-                        Explore This Tea
+                        Start with this tea →
                       </button>
                     </div>
                   ))}
                 </div>
+                <div
+                  style={{
+                    textAlign: 'center',
+                    padding: '32px 0 0',
+                    borderTop: '1px solid rgba(200,212,192,.08)',
+                    marginTop: 32,
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: 14,
+                      color: 'rgba(200,212,192,.7)',
+                      marginBottom: 8,
+                      fontWeight: 300,
+                    }}
+                  >
+                    No tools. No rules.
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: 'rgba(200,212,192,.4)',
+                      fontWeight: 300,
+                    }}
+                  >
+                    Just hot water and a moment to reset.
+                  </p>
+                </div>
+              </div>
+            </div>
 
-                {/* Email Waitlist */}
+            {/* KNOWLEDGE — 信任建立 */}
+            <div
+              style={{
+                background: '#faf7f1',
+                padding: 'clamp(48px,8vw,80px) 24px',
+              }}
+            >
+              <div style={{ maxWidth: 760, margin: '0 auto' }}>
+                <div style={{ textAlign: 'center', marginBottom: 40 }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: '.28em',
+                      textTransform: 'uppercase',
+                      color: '#b8732a',
+                      marginBottom: 10,
+                    }}
+                  >
+                    For the curious
+                  </div>
+                  <h3
+                    style={{
+                      fontFamily: "'Cormorant Garamond',serif",
+                      fontSize: 'clamp(28px,4vw,42px)',
+                      fontWeight: 400,
+                      color: '#1a1208',
+                    }}
+                  >
+                    Why this works
+                  </h3>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))',
+                    gap: 24,
+                  }}
+                >
+                  {p.knowledge.map((k, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        padding: '28px 26px',
+                        background: '#faf7f0',
+                        borderRadius: 14,
+                        borderLeft: `3px solid ${p.accent}`,
+                      }}
+                    >
+                      <h4
+                        style={{
+                          fontFamily: "'Cormorant Garamond',serif",
+                          fontSize: 22,
+                          fontWeight: 500,
+                          color: '#1a1208',
+                          marginBottom: 12,
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {k.title}
+                      </h4>
+                      <p
+                        style={{
+                          color: '#4a3f2f',
+                          fontSize: 14,
+                          lineHeight: 1.8,
+                          fontWeight: 300,
+                        }}
+                      >
+                        {k.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* EMAIL + ACTIONS */}
+            <div
+              style={{
+                background: '#0d1f0d',
+                padding: 'clamp(32px,6vw,60px) 24px',
+              }}
+            >
+              <div style={{ maxWidth: 760, margin: '0 auto' }}>
                 <div
                   style={{
                     background: 'rgba(255,255,255,.04)',
@@ -1248,7 +1346,7 @@ export default function App() {
                             (e.currentTarget.style.opacity = '1')
                           }
                         >
-                          Join
+                          Send my tea profile →
                         </button>
                       </div>
                     </>
@@ -1278,43 +1376,17 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Buttons */}
                 <div
                   style={{
                     display: 'flex',
                     gap: 12,
                     justifyContent: 'center',
                     flexWrap: 'wrap',
+                    marginTop: 24,
                   }}
                 >
                   <button
                     onClick={() => setChat(true)}
-                    style={{
-                      background: '#b8732a',
-                      border: 'none',
-                      color: '#f7f2e8',
-                      padding: '13px 30px',
-                      borderRadius: 36,
-                      fontSize: 12,
-                      letterSpacing: '.12em',
-                      textTransform: 'uppercase',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      transition: 'background .2s',
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = '#d4924a')
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = '#b8732a')
-                    }
-                  >
-                    🍃 Ask Your Tea Guide
-                  </button>
-                  <button
-                    onClick={restart}
                     style={{
                       background: 'rgba(255,255,255,.06)',
                       border: '1px solid rgba(200,212,192,.18)',
@@ -1334,6 +1406,31 @@ export default function App() {
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.background =
                         'rgba(255,255,255,.06)')
+                    }
+                  >
+                    🍃 Ask Your Tea Guide
+                  </button>
+                  <button
+                    onClick={restart}
+                    style={{
+                      background: 'rgba(255,255,255,.04)',
+                      border: '1px solid rgba(200,212,192,.12)',
+                      color: 'rgba(200,212,192,.5)',
+                      padding: '13px 30px',
+                      borderRadius: 36,
+                      fontSize: 12,
+                      letterSpacing: '.12em',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      transition: 'background .2s',
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        'rgba(255,255,255,.08)')
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background =
+                        'rgba(255,255,255,.04)')
                     }
                   >
                     Restart Journey
